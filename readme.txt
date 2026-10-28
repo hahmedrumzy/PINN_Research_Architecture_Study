@@ -38,7 +38,9 @@ One side effect matters later: for each feature, only the single point holding t
 
 Here the physics is elasticity. For linear elasticity:
 
-$$\varepsilon = \tfrac{1}{2}\left(\nabla \mathbf{u} + \nabla \mathbf{u}^{T}\right), \qquad \nabla \cdot \sigma = 0, \qquad \sigma = C : \varepsilon$$
+```math
+\varepsilon = \frac{1}{2}\left(\nabla \mathbf{u} + \nabla \mathbf{u}^{T}\right), \qquad \nabla \cdot \sigma = 0, \qquad \sigma = C : \varepsilon
+```
 
 That is: strain from the displacement gradient, forces in balance, and Hooke's law linking stress to strain. Every one of these needs the correct derivative of each point's displacement with respect to that point's own position.
 
@@ -78,9 +80,11 @@ The pitch: physics built into a fast network, with no FEM needed during training
 
 The published code does not compute strain. Its "strain" is exactly zero at 71% of points and has no relationship to the real strain (correlation −0.015).
 
-**The bug.** Strain at point *i* needs ∂u_i/∂x_i: how that point's displacement changes with its own position. The code uses `torch.autograd.grad(Ux, x, grad_outputs=ones)`, which instead returns, for each point *j*:
+**The bug.** Strain at point *i* needs $`\partial u_i / \partial x_i`$: how that point's displacement changes with its own position. The code uses `torch.autograd.grad(Ux, x, grad_outputs=ones)`, which instead returns, for each point *j*:
 
-$$\sum_i \frac{\partial u_i}{\partial x_j}$$
+```math
+\sum_i \frac{\partial u_i}{\partial x_j}
+```
 
 That is how much the *total* displacement of the cloud changes when point *j* moves. It equals the wanted value only if each point's output depends on its own coordinates alone.
 
@@ -144,10 +148,10 @@ Only the activation function clearly matters (ReLU beats tanh by 140%). Trunk wi
 
 | Case | Non-affine | Linear error (×10⁻³) | Neo-Hookean error (×10⁻³) | Difference | p |
 | --- | --- | --- | --- | --- | --- |
-| uniform_pressure | 0.00 | 0.663 | 0.583 | −12.1% | 1.00 |
-| two_zone_material | 0.46 | 1.379 | 1.367 | −0.9% | 1.00 |
-| two_point_poles | 0.77 | 1.715 | 1.680 | −2.0% | 0.50 |
-| four_points_poles_equator | 0.89 | 2.608 | 2.659 | +1.9% | 0.10 |
+| `uniform_pressure` | 0.00 | 0.663 | 0.583 | −12.1% | 1.00 |
+| `two_zone_material` | 0.46 | 1.379 | 1.367 | −0.9% | 1.00 |
+| `two_point_poles` | 0.77 | 1.715 | 1.680 | −2.0% | 0.50 |
+| `four_points_poles_equator` | 0.89 | 2.608 | 2.659 | +1.9% | 0.10 |
 
 With 3 seeds per group the smallest possible p is 0.10, so no difference could reach significance. Every case beat predicting no movement by 3–77×, so this is a genuine null rather than a broken pipeline.
 
