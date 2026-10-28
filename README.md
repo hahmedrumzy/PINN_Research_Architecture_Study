@@ -15,9 +15,8 @@ So the suspicious areas are marked on the MRI and then transferred onto the live
 
 The two scans also look completely different, so matching them pixel by pixel doesn't work well. Instead, the prostate is outlined (segmented) in both scans, and each outline is turned into a cloud of points: here 1024 points per scan, 512 on the surface and 512 inside. The task becomes: move the MRI points so they line up with the ultrasound points.
 
-**The catch.** Lining up the surfaces is easy to measure, but the inside of the prostate has few visible features. Many different interior deformations give the same surface match, and most are physically unrealistic (tissue folding, tearing or changing volume). The method therefore needs an extra rule that picks a realistic deformation. That rule is called a regulariser.
+**The problem:** Lining up the surfaces is easy to measure, but the inside of the prostate has few visible features. Many different interior deformations give the same surface match, and most are physically unrealistic (tissue folding, tearing or changing volume). The method therefore needs an extra rule that picks a realistic deformation. That rule is called a regulariser.
 
-**How accuracy is measured.** Target registration error (TRE): the distance between matching landmarks (small cysts, calcifications, the tip and base of the gland) after alignment. These landmarks are not used during alignment, so they give an independent check. Typical values in the paper are 6–7 mm.
 
 ## Background: PointNet and physics-informed networks
 
