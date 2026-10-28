@@ -152,28 +152,6 @@ Only the activation function clearly matters (ReLU beats tanh by 140%). Trunk wi
 
 With 3 seeds per group the smallest possible p is 0.10, so no difference could reach significance. Every case beat predicting no movement by 3–77×, so this is a genuine null rather than a broken pipeline.
 
-**6. Other code defects.**
-
-- Checkpoints saved only every 200 epochs with no final save, so results came from epoch 1800 of 2000. Fixing this improved one run by about 10%.
-- With batch size 2 and 5 files, the 5th file was silently never trained on. I used it as the held-out test, but the original error metric mixed training and test data.
-- Loss logged to 6 decimal places when it plateaus near 2 × 10⁻⁵, so it printed as 0.000000.
-- The device check was inverted: with no GPU it chose CUDA instead of CPU.
-- The stiffness map in the training code splits the sphere along the z-axis, but my two-zone test case is zoned by radius. This doesn't matter at the default settings (both regions soft), but would make the physics loss disagree with the data if the stiff region were switched on.
-
-## What this means for the paper's claims
-
-The paper's improvements may be real, but my findings suggest they don't come from enforcing elasticity.
-
-| Paper's claim | How my findings bear on it |
-| --- | --- |
-| Physics loss on new patients falls to 10⁻¹⁴, so the network "learned the physics" | Explained by the bug: near-zero strain lets stress go to zero, and every physics term then vanishes for free |
-| Adding the physics loss lowers TRE on real patients | Not tested on their data. If the physics is inert, the gain likely comes from the extra gradient acting as a generic regulariser |
-| Using all physics terms beats one alone (ablation) | Doesn't show the physics works; all terms depend on the same broken derivative |
-| Linear and nonlinear elasticity perform the same | Agrees with my result, and is expected at these small strains |
-| Nonlinear elasticity estimates stiffness far better (14% vs 76%) | Not tested. Stiffness is estimated through the constitutive loss, which uses the broken strain, so this is the claim most directly at risk |
-
-The bug is architectural, not a typo: any PointNet-style PINN that differentiates with `grad_outputs=ones` through a shared global feature has the same problem.
-
 ## Repository: what's where
 
 The repo is a fork of the paper's code, with a synthetic benchmark and experiment scripts added. Results are in `Findings/FINDINGS.md`; this section explains the files.
