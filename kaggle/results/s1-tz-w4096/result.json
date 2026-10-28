@@ -1,0 +1,25 @@
+{
+ "condition": "two_zone_material",
+ "dim_k": 1024,
+ "hidden_dims": "expanded_4096",
+ "activation": "relu",
+ "pool": "max",
+ "seed": 0,
+ "epochs": 2001,
+ "params_M": 142.458793,
+ "rmse_mean": 0.0008223306736908853,
+ "rmse_per_sample": [
+  0.0008155695395544171,
+  0.0008240106981247663,
+  0.0008224482298828661,
+  0.0008170296787284315,
+  0.0008325952221639454
+ ],
+ "rmse_seen": 0.0008197645365726203,
+ "rmse_unseen": 0.0008325952221639454,
+ "overfit_gap": 0.01565167193615058,
+ "rmse_predict_zero": 0.042637113481760025,
+ "final_total": 5e-06,
+ "final_chamfer": 0.0,
+ "final_pinns": 0.0
+}

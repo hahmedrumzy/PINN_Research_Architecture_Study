@@ -1,0 +1,25 @@
+{
+ "condition": "uniform_pressure",
+ "dim_k": 1024,
+ "hidden_dims": "expanded_4096",
+ "activation": "relu",
+ "pool": "max",
+ "seed": 0,
+ "epochs": 2001,
+ "params_M": 142.458793,
+ "rmse_mean": 0.0003618486225605011,
+ "rmse_per_sample": [
+  0.00036080455174669623,
+  0.00036451517371460795,
+  0.0003596363530959934,
+  0.0003569711116142571,
+  0.0003673159226309508
+ ],
+ "rmse_seen": 0.00036048179754288867,
+ "rmse_unseen": 0.0003673159226309508,
+ "overfit_gap": 0.01895830839350232,
+ "rmse_predict_zero": 0.04471592977643013,
+ "final_total": 1e-06,
+ "final_chamfer": 0.0,
+ "final_pinns": 0.0
+}

@@ -1,0 +1,16 @@
+{
+ "id": "haziqahmedrumzy/s3-n8-w2048",
+ "title": "S3 n8 w2048",
+ "code_file": "nb.ipynb",
+ "language": "python",
+ "kernel_type": "notebook",
+ "is_private": true,
+ "enable_gpu": true,
+ "enable_internet": false,
+ "machine_shape": "NvidiaTeslaT4",
+ "dataset_sources": [
+  "haziqahmedrumzy/pinn-sphere-conditions"
+ ],
+ "competition_sources": [],
+ "kernel_sources": []
+}

@@ -1,0 +1,16 @@
+{
+ "id": "haziqahmedrumzy/s1-w4096-relu-max",
+ "title": "S1 w4096 relu max",
+ "code_file": "nb.ipynb",
+ "language": "python",
+ "kernel_type": "notebook",
+ "is_private": true,
+ "enable_gpu": true,
+ "enable_internet": false,
+ "machine_shape": "NvidiaTeslaT4",
+ "dataset_sources": [
+  "haziqahmedrumzy/pinn-sphere-conditions"
+ ],
+ "competition_sources": [],
+ "kernel_sources": []
+}

@@ -1,0 +1,46 @@
+{
+ "exact": -0.05,
+ "mode": "supervised fit to exact field",
+ "epochs": 600,
+ "hidden_dims": [
+  256,
+  128,
+  64,
+  32,
+  16
+ ],
+ "dim_k": 1024,
+ "field_rel_err": 0.0021753988694399595,
+ "rows": [
+  {
+   "label": "AS SHIPPED",
+   "normal_mean": -0.0003290254098828882,
+   "normal_median": 0.0,
+   "normal_std": 0.019927965477108955,
+   "rel_err": 0.9934195280075073,
+   "shear_rms": 0.009869294241070747,
+   "frac_zero": 0.7392578125,
+   "field_rel_err": 0.0021753988694399595
+  },
+  {
+   "label": "FIXED v1 (detach g)",
+   "normal_mean": -0.049504730850458145,
+   "normal_median": -0.050039876252412796,
+   "normal_std": 0.0021864278241991997,
+   "rel_err": 0.009905397891998291,
+   "shear_rms": 0.0013955638278275728,
+   "frac_zero": 0.0,
+   "field_rel_err": 0.0021753988694399595
+  },
+  {
+   "label": "FIXED v2 (detach coords)",
+   "normal_mean": -0.049504730850458145,
+   "normal_median": -0.050039876252412796,
+   "normal_std": 0.0021864278241991997,
+   "rel_err": 0.009905397891998291,
+   "shear_rms": 0.0013955638278275728,
+   "frac_zero": 0.0,
+   "field_rel_err": 0.0021753988694399595
+  }
+ ]
+}

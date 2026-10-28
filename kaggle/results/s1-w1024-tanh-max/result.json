@@ -1,0 +1,21 @@
+{
+ "condition": "two_point_poles",
+ "hidden_dims": "baseline_1024",
+ "activation": "tanh",
+ "pool": "max",
+ "seed": 0,
+ "epochs": 2000,
+ "params_M": 25.197097,
+ "rmse_mean": 0.004250518605113029,
+ "rmse_per_sample": [
+  0.004721498116850853,
+  0.00417946744710207,
+  0.003914781846106052,
+  0.00449447613209486,
+  0.003942369483411312
+ ],
+ "rmse_predict_zero": 0.008334310725331306,
+ "final_total": 0.000144,
+ "final_chamfer": 1.4e-05,
+ "final_pinns": 3e-06
+}

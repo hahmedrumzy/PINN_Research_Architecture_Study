@@ -1,0 +1,2 @@
+config,hidden_dims,activation,pool,n_params,final_total,final_chamfer,final_pinns
+hd=baseline_1024_act=relu_pool=max,baseline_1024,relu,max,17724969,0.000019,0.000002,0.000001

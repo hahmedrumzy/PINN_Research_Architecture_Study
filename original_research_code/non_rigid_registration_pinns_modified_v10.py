@@ -1,6 +1,8 @@
 # combine the registration with the pinns
-from non_rigid_registration_modified_v10 import MLPNet,options,prostateset,PointNet_features,chamfer_loss,save_checkpoint, MLPNet_wo_relu,get_sample,convert_list_into_array
-from pinns_modified_v10 import pinn_loss, PINNsNet, pinns_layers,pinn_loss_lame_vector,get_lame_vectors_torch
+# use different lame parameters at different regions.
+from non_rigid_registration_modified_v10 import MLPNet,options,prostateset,PointNet_features_four_by_four,chamfer_loss,save_checkpoint, MLPNet_wo_relu,get_sample,convert_list_into_array
+from pinns_modified_v10 import pinn_loss_lame_vector_cuda1,get_lame_vectors_torch_cuda1
+
 import torch
 import numpy as np
 import argparse
@@ -8,6 +10,9 @@ import torch.utils.data
 import logging
 import os
 import time
+
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 def check_derivative(der, t):
     if der is None:
@@ -36,7 +41,7 @@ class PhysicsInformedRegistration(torch.nn.Module):
         '''
         the deformation related
         '''
-        self.ptfeatures = PointNet_features()
+        self.ptfeatures = PointNet_features_four_by_four(use_tnet=True)
         # the MLP layers
         mlp_list_layers2= [int(1024), int(512), int(256), int(128), int(64)]
         self.list_layers2 = MLPNet(2*dim_k+3, mlp_list_layers2, b_shared=True).layers
@@ -47,7 +52,7 @@ class PhysicsInformedRegistration(torch.nn.Module):
         the pinns related
         '''  
         
-        self.ptfeatures_pinns = PointNet_features()
+        self.ptfeatures_pinns = PointNet_features_four_by_four(use_tnet=True)
 
         self.pinns_sxx1       = MLPNet(2*dim_k+3, mlp_list_layers2, b_shared=True).layers
         self.pinns_sxx2       = MLPNet_wo_relu(64, [int(1)], b_shared=True).layers  
@@ -72,7 +77,8 @@ class PhysicsInformedRegistration(torch.nn.Module):
         
         source = data[:,0,:,:]
         target = data[:,1,:,:]       
-
+#        print('is source on GPU?', source.is_cuda)
+#        print('is target on GPU?', target.is_cuda)  
         # get the x,y,z coordinates
         source_x_coordinates = source[:,:,0]                                 #batch*number_of_points_in_each_batch
         source_y_coordinates = source[:,:,1]
@@ -103,11 +109,20 @@ class PhysicsInformedRegistration(torch.nn.Module):
 #        print('the device of source_used_x', source_used_x.get_device())
 #        print('the device of source_used_y', source_used_y.get_device())
 #        print('the device of source_used_z', source_used_z.get_device())
-        source_used    = torch.zeros(batch_number,num_points,3, device=torch.device('cuda:0')) # Make Sure that THIS TENSOR is GPU
+        source_used = torch.zeros(batch_number, num_points, 3, device=torch.device('cuda'))
 #        print('the device of source_used', source_used.get_device())
         source_used[:,:,0] = source_used_x 
         source_used[:,:,1] = source_used_y
         source_used[:,:,2] = source_used_z
+             
+            # add one element of one, to get the homogeneous coordinates   
+        allones_source    = torch.ones(source.size(dim=0), source.size(dim=1), 1)
+        allones_target    = torch.ones(target.size(dim=0), target.size(dim=1), 1)    
+        allones_source    = allones_source.to('cuda') 
+        allones_target    = allones_target.to('cuda')    
+        source_four       = torch.cat((source_used, allones_source), -1)
+        target_four       = torch.cat((target, allones_target), -1)        
+        
                          
 #        print('shape of source_used_x', source_used_x.shape)
 #        print('shape of source_used_y', source_used_y.shape)
@@ -115,9 +130,14 @@ class PhysicsInformedRegistration(torch.nn.Module):
 #        print('shape of source_used',   source_used.shape) # [2,1024,3])
 #        print('shape of source', source.shape)
         
-        pffeat_src   = self.ptfeatures(source_used)       # source_used or source
-#        print('pffeat_src shape', pffeat_src.shape)        # [2,1024])
-        pffeat_target= self.ptfeatures(target)       
+        
+             # the 4-by-4 T-Net version
+        pffeat_src   = self.ptfeatures(source_four) 
+        pffeat_target= self.ptfeatures(target_four)
+        
+#        pffeat_src   = self.ptfeatures(source_used)       # source_used or source
+##        print('pffeat_src shape', pffeat_src.shape)        # [2,1024])
+#        pffeat_target= self.ptfeatures(target)       
         
         global_feature = torch.cat( (pffeat_src,pffeat_target), -1)        
         num_source     = source.shape[1]       
@@ -156,8 +176,11 @@ class PhysicsInformedRegistration(torch.nn.Module):
         '''
         the pinns related
         '''  
-        pffeat_src_pinns     = self.ptfeatures_pinns(source_used)       
-        pffeat_target_pinns  = self.ptfeatures_pinns(target)       
+        pffeat_src_pinns     = self.ptfeatures_pinns(source_four)
+        pffeat_target_pinns  = self.ptfeatures_pinns(target_four)
+        
+#        pffeat_src_pinns     = self.ptfeatures_pinns(source_used)       
+#        pffeat_target_pinns  = self.ptfeatures_pinns(target)       
         
         global_feature_pinns = torch.cat( (pffeat_src_pinns,pffeat_target_pinns), -1)        
         num_source     = source.shape[1]       
@@ -205,7 +228,8 @@ class PhysicsInformedRegistration(torch.nn.Module):
 #        momentum_balance3 = Ux
         
         grad_outputs=torch.ones_like(Ux) 
-        print('which machine does grad_outputs belong to?', grad_outputs.get_device())
+#        print('is grad_outputs on gpu?', grad_outputs.is_cuda)
+#        print('which machine does grad_outputs belong to?', grad_outputs.get_device())
         
         
         Exx_der = torch.autograd.grad(Ux, x, grad_outputs=torch.ones_like(Ux), create_graph=True, allow_unused=True)[0]       #Ux, x
@@ -262,7 +286,7 @@ class PhysicsInformedRegistration(torch.nn.Module):
         
         return deformed_source, Ux, Uy, Uz, Sxx, Syy, Szz, Sxy, Sxz, Syz, Exx, Eyy, Ezz, Exy, Exz, Eyz, momentum_balance1, momentum_balance2, momentum_balance3 # ux_target, uy_target, uz_target are not outputted if one network is utilised.
 
-def train_with_pinns(model, trainloader, optimizer, device):
+def train_with_pinns(model, trainloader, optimizer, device, surfacechamfer):
     model.train()
     vloss         = 0.0
     # would like to check individual loss values, i.e., chamfer and pinns loss values
@@ -270,7 +294,7 @@ def train_with_pinns(model, trainloader, optimizer, device):
     vloss_pinns   = 0.0
      
      
-    # -----further split the individual loss terms in the pinns loss---
+    # -----further split the individual loss terms in the pinns loss----
     vloss_governing_equation1 = 0.0
     vloss_governing_equation2 = 0.0   
     vloss_governing_equation3 = 0.0    
@@ -280,12 +304,14 @@ def train_with_pinns(model, trainloader, optimizer, device):
     vloss_elastic_energy      = 0.0
     vloss_momentum_balance    = 0.0   
 
+    
      
     count = 0
     for i, data in enumerate(trainloader):
         
 #        print(type(data))
-        data = data.float()
+        data          = data.float()
+        data          =  data.to(device)  
 #        print(i)
 #        print('the data used in training', data.shape)
         optimizer.zero_grad()
@@ -294,49 +320,85 @@ def train_with_pinns(model, trainloader, optimizer, device):
 #        print('the device of data', data.get_device()) #RuntimeError: get_device is not implemented for type torch.FloatTensor
         # convert the data and model to gpu
 #        print('the device of data', device)
+#        print('is the data input BEFORE CONVERTING to the model on gpu?', data.is_cuda)
         
-        data          =  data.to(device)  
-        model.to(device)
+#        model.to(device)
+        
 #        model.to(torch.device('cuda:0'))
-
+#        print('is data on gpu?', data.is_cuda)
+        #start = time.time()      
         deformed, Ux, Uy, Uz, Sxx, Syy, Szz, Sxy, Sxz, Syz, Exx, Eyy, Ezz, Exy, Exz, Eyz, momentum_balance1, momentum_balance2, momentum_balance3   =  model(data)
+        #end = time.time()
+#        print('elapse time of model', end - start)
+#        print('is the data input to the model on gpu?', data.is_cuda)
+#        print('is the model on gpu?', next(model.parameters()).is_cuda)
+#        print('is the prediction on gpu?', deformed.is_cuda)
 #        elapsed = time.time() - t
 #        print('elapsed time for conducting the model', elapsed)
         
-        deformed      =  deformed.to(device)
+#        deformed      =  deformed.to(device)
 #        ux_target     =  ux_target.to(device)
 #        uy_target     =  uy_target.to(device)
 #        uz_target     =  uz_target.to(device)
-        Ux            =  Ux.to(device)
-        Uy            =  Uy.to(device)
-        Uz            =  Uz.to(device)
-        Sxx           =  Sxx.to(device)
-        Syy           =  Syy.to(device)
-        Szz           =  Szz.to(device)
-        Sxy           =  Sxy.to(device)
-        Sxz           =  Sxz.to(device)
-        Syz           =  Syz.to(device)
-        Exx           =  Exx.to(device)
-        Eyy           =  Eyy.to(device)
-        Ezz           =  Ezz.to(device)
-        Exy           =  Exy.to(device) 
-        Exz           =  Exz.to(device)
-        Eyz           =  Eyz.to(device)
-        momentum_balance1 =momentum_balance1.to(device)
-        momentum_balance2 =momentum_balance2.to(device)        
-        momentum_balance3 =momentum_balance3.to(device)         
+
+#        print('is deformed on gpu?', deformed.is_cuda)  
+#              
+#        print('is Ux on GPU?',  Ux.is_cuda)
+#        print('is Uy on gpu?',  Uy.is_cuda)        
+#        print('is Uz on GPU?',  Uz.is_cuda)
+#        
+#        print('is Sxx on gpu?', Sxx.is_cuda)        
+#        print('is Syy on GPU?', Syy.is_cuda)
+#        print('is Szz on gpu?', Szz.is_cuda)   
+#             
+#        print('is Sxy on GPU?', Sxy.is_cuda)
+#        print('is Sxz on gpu?', Sxz.is_cuda)        
+#        print('is Syz on GPU?', Syz.is_cuda)
+#        
+#        print('is Exx on gpu?', Exx.is_cuda)        
+#        print('is Eyy on GPU?', Eyy.is_cuda)
+#        print('is Ezz on GPU?', Ezz.is_cuda)
+#        
+#        print('is Exy on gpu?', Exy.is_cuda)        
+#        print('is Exz on GPU?', Exz.is_cuda)
+#        print('is Eyz on GPU?', Eyz.is_cuda)        
+#        
+#        print('is momentum_balance1 on gpu?', momentum_balance1.is_cuda)        
+#        print('is momentum_balance1 on GPU?', momentum_balance1.is_cuda)
+#        print('is momentum_balance1 on GPU?', momentum_balance1.is_cuda)  
+#        # The following variables are already on GPU.         
+#        Ux            =  Ux.to(device)
+#        Uy            =  Uy.to(device)
+#        Uz            =  Uz.to(device)
+#        Sxx           =  Sxx.to(device)
+#        Syy           =  Syy.to(device)
+#        Szz           =  Szz.to(device)
+#        Sxy           =  Sxy.to(device)
+#        Sxz           =  Sxz.to(device)
+#        Syz           =  Syz.to(device)
+#        Exx           =  Exx.to(device)
+#        Eyy           =  Eyy.to(device)
+#        Ezz           =  Ezz.to(device)
+#        Exy           =  Exy.to(device) 
+#        Exz           =  Exz.to(device)
+#        Eyz           =  Eyz.to(device)
+#        momentum_balance1 =momentum_balance1.to(device)
+#        momentum_balance2 =momentum_balance2.to(device)        
+#        momentum_balance3 =momentum_balance3.to(device)         
         
-        data          =  data.to(device)
+#        data          =  data.to(device)
 #        print('the device of data', data.get_device()) 
                 
                 
         #loss_cham     =  chamfer_loss(deformed, data[:,1,:,:], data.shape[2]) # use all points (i.e., both the boundary and internal points)
 #        print('data.shape[2]/2', data.shape[2]/2)
 #        print('type of data.shape[2]/2', type(data.shape[2]/2))
-        num_points_used_in_loss_cham = int(data.shape[2]/2)
-        
+        if surfacechamfer =='surfaceonly':
+           num_points_used_in_loss_cham = int(data.shape[2]/2)        
 #        t = time.time()
-        loss_cham     =  chamfer_loss(deformed[:,0:num_points_used_in_loss_cham,:],    data[:,1,0:num_points_used_in_loss_cham,:],    num_points_used_in_loss_cham)     # deformed is of (batch, num_points_source, 3)
+           loss_cham     =  chamfer_loss(deformed[:,0:num_points_used_in_loss_cham,:],    data[:,1,0:num_points_used_in_loss_cham,:],    num_points_used_in_loss_cham)     # deformed is of (batch, num_points_source, 3)
+        else:
+           loss_cham     =  chamfer_loss(deformed, data[:,1,:,:], data.shape[2]) # use all points (i.e., both the boundary and internal points)   
 #        elapsed = time.time() - t
 #        print('elapsed time for computing chamfer loss', elapsed)
         
@@ -344,39 +406,33 @@ def train_with_pinns(model, trainloader, optimizer, device):
         # the pinns loss using the same values of lames at different points
 #        PINNs_Loss, governing_equation1, governing_equation2,governing_equation3,governing_equation4, governing_equation5, governing_equation6, elastic_energy, momentum_balance=pinn_loss(Ux, Uy, Uz,  Sxx, Syy, Szz, Sxy, Sxz, Syz, Exx, Eyy, Ezz, Exy, Exz, Eyz, momentum_balance1, momentum_balance2, momentum_balance3)
         
+        # the pinns loss considering same values of lames at different points
+        # the pinns loss considering same values of lames at different points
         
-        # get the lames vectors for both source point sets
         patient_1_source = data[0,0,:,:]
-#        patient_2_source = data[1,0,:,:]
-        lame1_vector_patient_1, lame2_vector_patient_1 =get_lame_vectors_torch(patient_1_source, lame1_version1=torch.tensor(82.21), lame2_version1=torch.tensor(1.68), lame1_version2=torch.tensor(8221.47), lame2_version2=torch.tensor(167.78))           
-#        lame1_vector_patient_2, lame2_vector_patient_2 =get_lame_vectors_torch(patient_2_source, lame1_version1=torch.tensor(82.21), lame2_version1=torch.tensor(1.68), lame1_version2=torch.tensor(197.32), lame2_version2=torch.tensor(4.03))           
-        '''
-        In the case where the data are the same in one batch, we do not 
-        need to compute the values of lame1(or lame2) twice. 
-        We can directly copy the lame1 and lame2 computed for 
-        '''
+#        lame1_vector_patient_1, lame2_vector_patient_1 =get_lame_vectors_torch_cuda1(patient_1_source, lame1_version1=torch.tensor(82.21), lame2_version1=torch.tensor(1.68), lame1_version2=torch.tensor(8221.4765), lame2_version2=torch.tensor(164.4295)) 
+        lame1_vector_patient_1, lame2_vector_patient_1 =get_lame_vectors_torch_cuda1(patient_1_source, lame1_version1=torch.tensor(82.21), lame2_version1=torch.tensor(1.68), lame1_version2=torch.tensor(82.21), lame2_version2=torch.tensor(1.68))                
         lame1_vector_patient_2 = lame1_vector_patient_1
         lame2_vector_patient_2 = lame2_vector_patient_1
-#        print('shape of lame1_vector_patient_1', lame1_vector_patient_1.size())
-#        print('shape of lame2_vector_patient_1', lame2_vector_patient_1.size())
-#        print('shape of lame1_vector_patient_2', lame1_vector_patient_2.size())
-#        print('shape of lame2_vector_patient_2', lame2_vector_patient_2.size())
-        
         lame1_vector = torch.cat( (lame1_vector_patient_1,lame1_vector_patient_2), 0)
-        lame2_vector = torch.cat( (lame2_vector_patient_1,lame2_vector_patient_2), 0)
-#        print('shape of lame1_vector', lame1_vector.size())
-#        print('shape of lame2_vector', lame2_vector.size()) 
-        
+        lame2_vector = torch.cat( (lame2_vector_patient_1,lame2_vector_patient_2), 0)        
+
+        PINNs_Loss, governing_equation1, governing_equation2,governing_equation3,governing_equation4, governing_equation5, governing_equation6, elastic_energy, momentum_balance=pinn_loss_lame_vector_cuda1(Ux, Uy, Uz, Sxx,Syy,Szz,Sxy,Sxz,Syz,Exx,Eyy,Ezz,Exy,Exz,Eyz, momentum_balance1,momentum_balance2, momentum_balance3,lame1_vector, lame2_vector)
                 
-        # the pinns loss considering different values of lames at different points
-        PINNs_Loss, governing_equation1, governing_equation2,governing_equation3,governing_equation4, governing_equation5, governing_equation6, elastic_energy, momentum_balance=pinn_loss_lame_vector(Ux, Uy, Uz, Sxx,Syy,Szz,Sxy,Sxz,Syz,Exx,Eyy,Ezz,Exy,Exz,Eyz, momentum_balance1,momentum_balance2, momentum_balance3,lame1_vector, lame2_vector)        
         
+        #start = time.time()
+#        PINNs_Loss, governing_equation1, governing_equation2,governing_equation3,governing_equation4, governing_equation5, governing_equation6, elastic_energy, momentum_balance      =  pinn_loss_cuda1(Ux, Uy, Uz,  Sxx, Syy, Szz, Sxy, Sxz, Syz, Exx, Eyy, Ezz, Exy, Exz, Eyz, momentum_balance1, momentum_balance2, momentum_balance3)   # ux_target, uy_target, uz_target, 
+       
+                    
+        #end = time.time()
+#        print('elapse time of pinns loss cuda1', end - start)
+              
         # do stuff
 #        elapsed = time.time() - t
 #        print('elapsed time for computing pinn_loss', elapsed)
 #        print('training loss_cham',  loss_cham)
 #        print('training PINNs_Loss', PINNs_Loss)
-        total_loss = 100000*loss_cham + PINNs_Loss
+        total_loss = 10*loss_cham + PINNs_Loss
 #        print('total_loss',          total_loss)
         # forward + backward + optimize
         optimizer.zero_grad()
@@ -413,6 +469,19 @@ def train_with_pinns(model, trainloader, optimizer, device):
     ave_vloss_elastic_energy      = float(vloss_elastic_energy)/count     
     ave_vloss_momentum_balance    = float(vloss_momentum_balance)/count    
        
+#    ave_vloss         = vloss/count
+#    ave_vloss_chamfer = vloss_chamfer/count
+#    ave_vloss_pinns   = vloss_pinns/count
+#    
+#    ave_vloss_governing_equation1 = vloss_governing_equation1/count
+#    ave_vloss_governing_equation2 = vloss_governing_equation2/count 
+#    ave_vloss_governing_equation3 = vloss_governing_equation3/count 
+#    ave_vloss_governing_equation4 = vloss_governing_equation4/count
+#    ave_vloss_governing_equation5 = vloss_governing_equation5/count
+#    ave_vloss_governing_equation6 = vloss_governing_equation6/count
+#    ave_vloss_elastic_energy      = vloss_elastic_energy/count     
+#    ave_vloss_momentum_balance    = vloss_momentum_balance/count        
+              
     return ave_vloss, ave_vloss_chamfer, ave_vloss_pinns, ave_vloss_governing_equation1, ave_vloss_governing_equation2, ave_vloss_governing_equation3, ave_vloss_governing_equation4, ave_vloss_governing_equation5, ave_vloss_governing_equation6,ave_vloss_elastic_energy, ave_vloss_momentum_balance
 
 def eval_with_pinns(model, testloader, device):
@@ -442,28 +511,9 @@ def eval_with_pinns(model, testloader, device):
        data =  data.to(device)  
        model.to(device)
        
-       
-       # get the lame vectors for both source point sets
-       patient_1_source = data[0,0,:,:]
-#       patient_2_source = data[1,0,:,:]       
-       
-       lame1_vector_patient_1, lame2_vector_patient_1 =get_lame_vectors_torch(patient_1_source, lame1_version1=torch.tensor(82.21), lame2_version1=torch.tensor(1.68), lame1_version2=torch.tensor(8221.47), lame2_version2=torch.tensor(167.78))           
-#       lame1_vector_patient_2, lame2_vector_patient_2 =get_lame_vectors_torch(patient_2_source, lame1_version1=torch.tensor(82.21), lame2_version1=torch.tensor(1.68), lame1_version2=torch.tensor(197.32), lame2_version2=torch.tensor(4.03))        
-      
-       '''
-       In the case where the data are the same in one batch, we do not 
-       need to compute the values of lame1(or lame2) twice. 
-       We can directly copy the lame1 and lame2 computed for 
-       '''
-       lame1_vector_patient_2 = lame1_vector_patient_1
-       lame2_vector_patient_2 = lame2_vector_patient_1
-       
-       lame1_vector = torch.cat( (lame1_vector_patient_1,lame1_vector_patient_2), 0)
-       lame2_vector = torch.cat( (lame2_vector_patient_1,lame2_vector_patient_2), 0)       
-       
-       
+              
        deformed, Ux, Uy, Uz, Sxx, Syy, Szz, Sxy, Sxz, Syz, Exx, Eyy, Ezz, Exy, Exz, Eyz, momentum_balance1, momentum_balance2, momentum_balance3  =  model(data) # ux_target,uy_target,uz_target, 
-       deformed      =  deformed.to(device)
+       
     #             ux_target     =  ux_target.to(device)
     #             uy_target     =  uy_target.to(device)
     #             uz_target     =  uz_target.to(device)
@@ -486,16 +536,14 @@ def eval_with_pinns(model, testloader, device):
        momentum_balance1 = momentum_balance1.to(device)
        momentum_balance2 = momentum_balance2.to(device)        
        momentum_balance3 = momentum_balance3.to(device) 
-    
-       data          =  data.to(device)             
+       #deformed      =  deformed.to(device)
+       #data          =  data.to(device)             
        
        #loss_cham     =  chamfer_loss(deformed, data[:,1,:,:], data.shape[2])   # use all points (i.e., both the boundary and internal points)
        num_points_used_in_loss_cham = int(data.shape[2]/2)
        loss_cham     =  chamfer_loss(deformed[:,0:num_points_used_in_loss_cham,:],    data[:,1,0:num_points_used_in_loss_cham,:],    num_points_used_in_loss_cham)     # deformed is of (batch, num_points_source, 3) 
-#       PINNs_Loss, governing_equation1, governing_equation2,governing_equation3,governing_equation4, governing_equation5, governing_equation6, elastic_energy, momentum_balance      =  pinn_loss(Ux, Uy, Uz,  Sxx, Syy, Szz, Sxy, Sxz, Syz, Exx, Eyy, Ezz, Exy, Exz, Eyz, momentum_balance1, momentum_balance2, momentum_balance3)   # ux_target, uy_target, uz_target,   
+       PINNs_Loss, governing_equation1, governing_equation2,governing_equation3,governing_equation4, governing_equation5, governing_equation6, elastic_energy, momentum_balance      =  pinn_loss_cuda1(Ux, Uy, Uz,  Sxx, Syy, Szz, Sxy, Sxz, Syz, Exx, Eyy, Ezz, Exy, Exz, Eyz, momentum_balance1, momentum_balance2, momentum_balance3)   # ux_target, uy_target, uz_target,   
        
-       # the pinns loss considering different values of lames at different points
-       PINNs_Loss, governing_equation1, governing_equation2,governing_equation3,governing_equation4, governing_equation5, governing_equation6, elastic_energy, momentum_balance      =pinn_loss_lame_vector(Ux, Uy, Uz, Sxx,Syy,Szz,Sxy,Sxz,Syz,Exx,Eyy,Ezz,Exy,Exz,Eyz, momentum_balance1,momentum_balance2, momentum_balance3,lame1_vector, lame2_vector)
        
        
 #       print('test loss_cham',  loss_cham) 
@@ -560,7 +608,9 @@ class prostateset_v2(torch.utils.data.Dataset):
           sample_return_downsampled = downsample_mri_us(sample_return)
         else:                             
           sample_return_downsampled = convert_list_into_array(sample_return)
-        return sample_return_downsampled
+
+
+        return np.ascontiguousarray(sample_return_downsampled, dtype=np.float32)
 
 
 
@@ -578,6 +628,9 @@ def main(args):
         current_sample_path = samples_path[index] 
         current_sample      = np.load(current_sample_path, allow_pickle=True)
         ALL_SAMPLES.append(current_sample)
+    
+    
+    
     print('type of ALL_SAMPLES',        type(ALL_SAMPLES))
     print('type of ALL_SAMPLES[0]',     type(ALL_SAMPLES[0]))
     print('shape of ALL_SAMPLES[0]',    ALL_SAMPLES[0].shape)  #(4, 1024, 3)  
@@ -607,12 +660,13 @@ def print_model_parameters(model):
 
 def run(args, trainset, testset):
     if not torch.cuda.is_available():
-       args.device = 'cpu'
+       args.device = 'cuda'
     args.device = torch.device(args.device)   
     
     # the model 
     model = PhysicsInformedRegistration()
-    model.cuda()
+    #model.cuda()    
+    model.to(args.device) 
 #    print('have passed the model to GPU')
     # optimizer
     min_loss = float('inf')
@@ -657,8 +711,8 @@ def run(args, trainset, testset):
     loss_values_validation_momentum_balance    = []
  
     # move the train and test DataLoader outside the epoch loop 
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,  shuffle=False,  num_workers=args.workers,  drop_last =True)
-    testloader  = torch.utils.data.DataLoader(testset,  batch_size=args.batch_size,  shuffle=False,  num_workers=args.workers,  drop_last =True)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,  shuffle=False,  num_workers=0,  drop_last =True)
+    testloader  = torch.utils.data.DataLoader(testset,  batch_size=args.batch_size,  shuffle=False,  num_workers=0,  drop_last =True)
        
     for epoch in range(args.start_epoch, args.epochs):    
         
@@ -667,7 +721,10 @@ def run(args, trainset, testset):
         '''
         First way, train the registration net together.   
         '''
-        running_loss, running_loss_chamfer, running_loss_pinns,running_loss_governing_equation1, running_loss_governing_equation2, running_loss_governing_equation3, running_loss_governing_equation4, running_loss_governing_equation5, running_loss_governing_equation6, running_loss_elastic_energy, running_loss_momentum_balance = train_with_pinns(model, trainloader, optimizer, args.device)
+        running_loss, running_loss_chamfer, running_loss_pinns,running_loss_governing_equation1, running_loss_governing_equation2, running_loss_governing_equation3, running_loss_governing_equation4, running_loss_governing_equation5, running_loss_governing_equation6, running_loss_elastic_energy, running_loss_momentum_balance = train_with_pinns(model, trainloader, optimizer, args.device, args.surfacechamfer)
+        
+        elapsed_time_of_one_epoch = time.time() - time_start_of_one_epoch
+#        print('How much time does train_with_pinns COST?', elapsed_time_of_one_epoch)
        
        # val_loss, val_loss_chamfer, val_loss_pinns, val_loss_governing_equation1, val_loss_governing_equation2, val_loss_governing_equation3, val_loss_governing_equation4, val_loss_governing_equation5, val_loss_governing_equation6, val_loss_elastic_energy, val_loss_momentum_balance = eval_with_pinns(model,  testloader, args.device)        
         
@@ -684,11 +741,20 @@ def run(args, trainset, testset):
                 'min_loss': min_loss,
                 'optimizer': optimizer.state_dict(),}    
         
-        if is_best:
-            save_checkpoint(snap, args.outfile, 'snap_best')
-            save_checkpoint(model.state_dict(), args.outfile, 'model_best')                                
-        save_checkpoint(snap, args.outfile, 'snap_last')
-        save_checkpoint(model.state_dict(),  args.outfile, 'model_last')        
+#        start = time.time()
+        
+        
+#        print('epoch', epoch)
+        if (epoch%200==0): 
+           if is_best:
+              save_checkpoint(snap, args.outfile, 'snap_best')
+              save_checkpoint(model.state_dict(), args.outfile, 'model_best')                                
+           save_checkpoint(snap, args.outfile, 'snap_last')
+           save_checkpoint(model.state_dict(),  args.outfile, 'model_last')        
+        
+#        end = time.time()
+#        print('elapse time of saving models files', end - start) 
+
         
         print('training loss all',    running_loss)
         print('running_loss_chamfer', running_loss_chamfer)        
@@ -722,53 +788,55 @@ def run(args, trainset, testset):
 #        loss_values_validation_elastic_energy.append(val_loss_elastic_energy)
 #        loss_values_validation_momentum_balance.append(val_loss_momentum_balance) 
         
-        # save the training loss during training 
-        base_path = 'modified_codes_v10'       
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training.txt', 'w') as fp:
+        # save the training loss during training       
+#        start = time.time()
+        with open(args.outfile+ 'training.txt', 'w') as fp:
             for item in loss_values_training_save:
                 # write each item on a new line
                 fp.write("%s\n" % item)       
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_chamfer.txt', 'w') as fp:
+        with open(args.outfile+ 'training_chamfer.txt', 'w') as fp:
             for item in loss_values_training_chamfer:
                 # write each item on a new line
                 fp.write("%s\n" % item)
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_pinns.txt', 'w') as fp:
+        with open(args.outfile+ 'training_pinns.txt', 'w') as fp:
             for item in loss_values_training_pinns:
                 # write each item on a new line
                 fp.write("%s\n" % item)     
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_governing_equation1.txt', 'w') as fp:
+        with open(args.outfile+ 'training_governing_equation1.txt', 'w') as fp:
             for item in loss_values_training_governing_equation1:
                 # write each item on a new line
                 fp.write("%s\n" % item)                 
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_governing_equation2.txt', 'w') as fp:
+        with open(args.outfile+ 'training_governing_equation2.txt', 'w') as fp:
             for item in loss_values_training_governing_equation2:
                 # write each item on a new line
                 fp.write("%s\n" % item)                                
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_governing_equation3.txt', 'w') as fp:
+        with open(args.outfile+ 'training_governing_equation3.txt', 'w') as fp:
             for item in loss_values_training_governing_equation3:
                 # write each item on a new line
                 fp.write("%s\n" % item)                               
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_governing_equation4.txt', 'w') as fp:
+        with open(args.outfile+ 'training_governing_equation4.txt', 'w') as fp:
             for item in loss_values_training_governing_equation4:
                 # write each item on a new line
                 fp.write("%s\n" % item)                
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_governing_equation5.txt', 'w') as fp:
+        with open(args.outfile+ 'training_governing_equation5.txt', 'w') as fp:
             for item in loss_values_training_governing_equation5:
                 # write each item on a new line
                 fp.write("%s\n" % item)                 
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_governing_equation6.txt', 'w') as fp:
+        with open(args.outfile+ 'training_governing_equation6.txt', 'w') as fp:
             for item in loss_values_training_governing_equation6:
                 # write each item on a new line
                 fp.write("%s\n" % item)                                 
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_elastic_energy.txt', 'w') as fp:
+        with open(args.outfile+ 'training_elastic_energy.txt', 'w') as fp:
             for item in loss_values_training_elastic_energy:
                 # write each item on a new line
                 fp.write("%s\n" % item)                
-        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/training_momentum_balance.txt', 'w') as fp:
+        with open(args.outfile+ 'training_momentum_balance.txt', 'w') as fp:
             for item in loss_values_training_momentum_balance:
                 # write each item on a new line
-                fp.write("%s\n" % item)                 
-                
+                fp.write("%s\n" % item)   
+                              
+#        end = time.time()
+#        print('elapse time of saving loss values files', end - start)            
                                         
         # save the validation loss during training             
 #        with open(r'/home/zmin/registration_mz/'+base_path+'/out_put_folder/validation.txt', 'w') as fp:
@@ -817,8 +885,8 @@ def run(args, trainset, testset):
 #                fp.write("%s\n" % item)               
         
         # How much time does ONE EPOCH COST? How much time does ONE EPOCH COST?
-        elapsed_time_of_one_epoch = time.time() - time_start_of_one_epoch
-        print('How much time does ONE EPOCH COST? How much time does ONE EPOCH COST? How much time does ONE EPOCH COST?', elapsed_time_of_one_epoch)
+#        elapsed_time_of_one_epoch = time.time() - time_start_of_one_epoch
+#        print('How much time does ONE EPOCH COST? How much time does ONE EPOCH COST? How much time does ONE EPOCH COST?', elapsed_time_of_one_epoch)
         
         
         
@@ -835,4 +903,14 @@ if __name__ == '__main__':
     
     
     
- 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    

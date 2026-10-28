@@ -1,0 +1,21 @@
+{
+ "condition": "two_point_poles",
+ "hidden_dims": "baseline_1024",
+ "activation": "sin",
+ "pool": "max",
+ "seed": 0,
+ "epochs": 2000,
+ "params_M": 25.197097,
+ "rmse_mean": 0.0038803442846983673,
+ "rmse_per_sample": [
+  0.004448462277650833,
+  0.003736172802746296,
+  0.003493459429591894,
+  0.004131910856813192,
+  0.00359171605668962
+ ],
+ "rmse_predict_zero": 0.008334310725331306,
+ "final_total": 0.000175,
+ "final_chamfer": 1.6e-05,
+ "final_pinns": 1.8e-05
+}

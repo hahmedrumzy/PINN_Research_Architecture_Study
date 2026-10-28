@@ -1,0 +1,2 @@
+config,hidden_dims,activation,pool,n_params,final_total,final_chamfer,final_pinns
+hd=expanded_4096_act=relu_pool=max,expanded_4096,relu,max,142458793,0.000017,0.000002,0.000001

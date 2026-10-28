@@ -1,0 +1,25 @@
+{
+ "condition": "two_point_poles",
+ "dim_k": 1024,
+ "hidden_dims": "expanded_4096",
+ "activation": "relu",
+ "pool": "max",
+ "seed": 0,
+ "epochs": 2001,
+ "params_M": 142.458793,
+ "rmse_mean": 0.0013330126646906137,
+ "rmse_per_sample": [
+  0.0012711354065686464,
+  0.001228181878104806,
+  0.001276108087040484,
+  0.0012265559053048491,
+  0.0016630820464342833
+ ],
+ "rmse_seen": 0.0012504953192546964,
+ "rmse_unseen": 0.0016630820464342833,
+ "overfit_gap": 0.32993864177395826,
+ "rmse_predict_zero": 0.008334310725331306,
+ "final_total": 1.7e-05,
+ "final_chamfer": 2e-06,
+ "final_pinns": 1e-06
+}
