@@ -63,16 +63,6 @@ The prostate is modelled as two zones: a soft outer zone (peripheral zone, 5 kPa
 
 The pitch: physics built into a fast network, with no FEM needed during training or use.
 
-**What it claims.**
-
-| Experiment | Data | Main claimed result |
-| --- | --- | --- |
-| Patient-specific registration | 77 real MRI–ultrasound pairs | Physics loss lowers TRE significantly (p < 0.001); for the 40% largest deformations, 7.86 → about 6.3 mm |
-| Trained on many patients, tested on new ones | 75 train, 33 test pairs | TRE 6.96 → 6.12 mm (p = 0.018); physics loss on new patients falls from 20 to 10⁻¹⁴, taken as "learned the physics" |
-| Simulated, known answer | 22 FEM-deformed prostate meshes | Error 1.80 → 1.25 mm with physics loss; linear vs nonlinear elasticity not significantly different |
-| Estimating tissue stiffness (inverse problem) | Same simulations, 6 successful cases | Stiffness ratio error 14% with nonlinear vs 76% with linear (p = 0.002) |
-| Ablation | Simulations | Using all physics terms beats using one alone (e.g. 1.27 vs 1.42–1.52 mm) |
-
 ## What I found: the strain is computed wrongly
 
 The published code does not compute strain. Its "strain" is exactly zero at 71% of points and has no relationship to the real strain (correlation −0.015).
