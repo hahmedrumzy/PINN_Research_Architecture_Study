@@ -1,7 +1,5 @@
 # Physics-Informed Registration: Paper, Findings and My Work
 
-Research internship at UCL under Dr Yipeng Hu, a co-author of the paper. The work is a research fork of the paper's code: a synthetic benchmark with exact answers, an architecture and elasticity study, and an audit of the physics loss.
-
 ## The problem: aligning MRI and ultrasound of the prostate
 
 The paper tries to map a prostate MRI scan onto an ultrasound scan of the same patient, so that tumours visible on MRI can be targeted during a needle biopsy guided by ultrasound.
@@ -233,15 +231,6 @@ Not in the repo: trained weights (about 3.4 GB), local test runs and the Python 
 ## Not yet established, and next steps
 
 The bug and its effect on the strain are solid; what it means for training and for real patients is still open.
-
-**Not established:**
-
-- **Everything is synthetic.** Nothing has been run on real MRI–ultrasound data.
-- **The architecture sweep and the smaller-model result rest on one seed each.**
-- **Why the corrected model fails to train is unexplained.** Two simpler causes need ruling out first: the fix may also be cutting the data loss off from the backbone, or the now-correct physics loss may be pulling predictions towards zero movement at the current loss weighting. The failing run also used a new training loop, which is a third suspect.
-- **The training data is weak.** Four near-duplicate samples, and the held-out file is the same deformation resampled.
-- **The 1000-epoch elasticity comparison wasn't trained to convergence**, though both theories had the same budget.
-- **The complexity × width study is not finished.** Its 20 notebooks (4, 8, 16 and 32 push points × trunk width) are built, but results aren't in yet.
 
 **Next steps, in order:**
 
